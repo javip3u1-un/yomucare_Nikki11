@@ -1,0 +1,181 @@
+<!-- 🔽 この index.html を丸ごと置き換えてOK -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>よむカレ - あなたの日常を、新聞の1ページに。</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+// ==========================
+// 🔑 APIキー（ここだけ自分で貼る）
+// ==========================
+const API_KEY = "AIzaSyDkRhPDaYMDF7iWttukSRuqlevaAcHGYMw";
+
+// ==========================
+// 🧠 AIニュース選定関数
+// ==========================
+async function fetchSelectedNews(newsList, userData) {
+
+  const prompt = `
+あなたは新聞編集長です。
+
+以下のニュースからユーザーに最適な5〜10件を選んでください。
+
+【ユーザー】
+年齢: ${userData.age}
+性別: ${userData.gender}
+興味: ${userData.interests.join(",")}
+属性: ${userData.attribute}
+
+【ニュース】
+${newsList.map((n, i) => `${i+1}. ${n.title}`).join("\n")}
+
+【条件】
+・興味一致
+・驚きや変化がある
+・日常に関係する
+
+【出力】
+番号のみ（例: 1,3,5）
+`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    }
+  );
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+  const indexes = text
+    .split(",")
+    .map(n => parseInt(n.trim()) - 1)
+    .filter(i => !isNaN(i));
+
+  return indexes.map(i => newsList[i]).filter(Boolean);
+}
+
+// ==========================
+// モックデータ
+// ==========================
+const NEWS_KNOWLEDGE_BASE = [
+  { id: 101, month: 1, day: 1, title: "元旦の過ごし方、10年前は福袋", category: "ライフ", trendScore: 90 },
+  { id: 302, title: "生成AIの利用率、前年比300%増", category: "テクノロジー", trendScore: 98 },
+  { id: 901, title: "大谷翔平、打球速度が過去最高", category: "スポーツ", trendScore: 92 },
+  { id: 902, title: "睡眠負債、日本は世界ワースト", category: "健康", trendScore: 87 }
+];
+
+// ==========================
+// メインアプリ
+// ==========================
+function App() {
+
+  const [userData, setUserData] = useState({
+    name: '',
+    interests: [],
+    gender: '',
+    age: '',
+    attribute: ''
+  });
+
+  const [selectedDate] = useState(new Date());
+  const [filteredNews, setFilteredNews] = useState([]);
+  const [aiNews, setAiNews] = useState([]);
+
+  // --------------------------
+  // 通常スコア
+  // --------------------------
+  useEffect(() => {
+    const result = NEWS_KNOWLEDGE_BASE
+      .map(n => ({ ...n, score: n.trendScore }))
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,8);
+
+    setFilteredNews(result);
+  }, []);
+
+  // --------------------------
+  // AI選定
+  // --------------------------
+  useEffect(() => {
+    async function runAI() {
+      if (userData.interests.length === 0) return;
+      const result = await fetchSelectedNews(NEWS_KNOWLEDGE_BASE, userData);
+      setAiNews(result);
+    }
+
+    runAI();
+  }, [userData]);
+
+  // --------------------------
+  // 表示切り替え
+  // --------------------------
+  const displayNews = aiNews.length > 0 ? aiNews : filteredNews;
+
+  return (
+    <div className="p-6">
+      <h1 className="text-xl font-bold mb-4">よむカレ（AI版）</h1>
+
+      <div className="mb-4">
+        <input
+          placeholder="名前"
+          onChange={(e)=>setUserData(p=>({...p,name:e.target.value}))}
+          className="border p-2 mr-2"
+        />
+
+        <select onChange={(e)=>setUserData(p=>({...p,gender:e.target.value}))}>
+          <option value="">性別</option>
+          <option value="male">男性</option>
+          <option value="female">女性</option>
+        </select>
+      </div>
+
+      <div className="mb-4">
+        <button onClick={()=>setUserData(p=>({...p,interests:["スポーツ"]}))}>
+          スポーツ興味
+        </button>
+        <button onClick={()=>setUserData(p=>({...p,interests:["テクノロジー"]}))}>
+          テック興味
+        </button>
+      </div>
+
+      <h2 className="font-bold mb-2">ニュース一覧</h2>
+
+      {displayNews.map(news => (
+        <div key={news.id} className="border p-3 mb-2">
+          <div className="text-xs text-red-600">{news.category}</div>
+          <div>{news.title}</div>
+        </div>
+      ))}
+
+    </div>
+  );
+}
+
+// ==========================
+// 描画
+// ==========================
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+</script>
+</body>
+</html>
